@@ -10,6 +10,7 @@ public class SpinManager : MonoBehaviour
     public TMP_Text goldText;
     public int buyPrice;
     public TMP_Text buyText;
+    public Button buyButton;
     public Image spinWheel;
     public TMP_Text resultText;
     public GameObject resultPanel;
@@ -48,6 +49,7 @@ public class SpinManager : MonoBehaviour
         if(gold > buyPrice)
         {
             gold -= buyPrice;
+            buyButton.interactable = false;
             Spinner chosenSpinner = ChooseSpinnerByWeight();
             if (chosenSpinner != null)
             {
@@ -174,6 +176,7 @@ public class SpinManager : MonoBehaviour
         Debug.Log("Wheel stopped at angle: " + targetAngle);
 
         Invoke("ActivatingResultPanel", 0.5f);
+        buyButton.interactable = true;
         Invoke("DeactivatingResultPanel", 6f);
     }
 
