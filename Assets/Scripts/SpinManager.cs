@@ -1,9 +1,19 @@
 using System.Collections;
 using System.Collections.Generic;
+using TMPro;
 using UnityEngine;
+using UnityEngine.UI;
 
 public class SpinManager : MonoBehaviour
 {
+    public int gold;
+    public TMP_Text goldText;
+    public int buyPrice;
+    public TMP_Text buyText;
+    public Image spinWheel;
+    public TMP_Text resultText;
+    public GameObject resultPanel;
+    public Image resultImage;
     public List<Spinner> characterToSpin;
 
     [System.Serializable]
@@ -20,30 +30,50 @@ public class SpinManager : MonoBehaviour
     public List<CharacterClass> characterClassesEpic = new List<CharacterClass>();
     public List<CharacterClass> characterClassesLegendary = new List<CharacterClass>();
 
+    private float spinDuration = 3f; // Duration of the spin animation
+    private float decelerationDuration = 1f; // Duration of the deceleration phase
+
+    private void Start()
+    {
+        buyText.text = "BUY " + buyPrice + " GOLD/SPIN"; 
+    }
+    private void Update()
+    {
+        goldText.text = gold.ToString();
+    }
+
     // This function can be triggered by a button click
     public void TriggerSpin()
     {
-        Spinner chosenSpinner = ChooseSpinnerByWeight();
-        if (chosenSpinner != null)
+        if(gold > buyPrice)
         {
-            // Depending on the rarity, call the appropriate function to select a character
-            switch (chosenSpinner.rarity)
+            gold -= buyPrice;
+            Spinner chosenSpinner = ChooseSpinnerByWeight();
+            if (chosenSpinner != null)
             {
-                case 1:
-                    SelectRandomCharacter(characterClassesCommon);
-                    break;
-                case 2:
-                    SelectRandomCharacter(characterClassesRare);
-                    break;
-                case 3:
-                    SelectRandomCharacter(characterClassesEpic);
-                    break;
-                case 4:
-                    SelectRandomCharacter(characterClassesLegendary);
-                    break;
-                default:
-                    Debug.LogError("Invalid rarity");
-                    break;
+                // Depending on the rarity, call the appropriate function to select a character
+                switch (chosenSpinner.rarity)
+                {
+                    case 1:
+                        SelectRandomCharacter(characterClassesCommon);
+                        break;
+                    case 2:
+                        SelectRandomCharacter(characterClassesRare);
+                        break;
+                    case 3:
+                        SelectRandomCharacter(characterClassesEpic);
+                        break;
+                    case 4:
+                        SelectRandomCharacter(characterClassesLegendary);
+                        break;
+                    default:
+                        Debug.LogError("Invalid rarity");
+                        break;
+                }
+
+                // Calculate the stopping point on the wheel based on rarity
+                float stopAngle = GetRandomStopAngleForRarity(chosenSpinner);
+                StartCoroutine(SpinWheel(stopAngle));
             }
         }
     }
@@ -78,38 +108,98 @@ public class SpinManager : MonoBehaviour
     // Function to select a random character from a list and unlock it
     void SelectRandomCharacter(List<CharacterClass> characterList)
     {
-        // Filter out characters that are already unlocked
-        List<CharacterClass> lockedCharacters = GetLockedCharacters(characterList);
-
-        if (lockedCharacters.Count > 0)
+        if (characterList.Count > 0)
         {
-            int randomIndex = Random.Range(0, lockedCharacters.Count);
-            CharacterClass selectedCharacter = lockedCharacters[randomIndex];
+            int randomIndex = Random.Range(0, characterList.Count);
+            CharacterClass selectedCharacter = characterList[randomIndex];
 
-            // Unlock the chosen character
-            selectedCharacter.isUnlocked = true;
-
-            Debug.Log("Selected character: " + selectedCharacter.name + " is now unlocked.");
+            if (selectedCharacter.isUnlocked)
+            {
+                resultImage.sprite = selectedCharacter.characterImage.sprite;
+                selectedCharacter.ChoosenAlreadyUnlocked();
+                resultText.text = "Unlucky, you get character you've already unlocked, try again!";
+            }
+            else if (!selectedCharacter.isUnlocked)
+            {
+                resultImage.sprite = selectedCharacter.characterImage.sprite;
+                selectedCharacter.isUnlocked = true;
+                selectedCharacter.FirstUnlocked();
+                resultText.text = "Selected character: " + selectedCharacter.name + " is now unlocked.";
+            }
         }
         else
         {
-            Debug.LogError("No locked characters available for this rarity.");
+            Debug.LogError("Character list is empty for this rarity.");
         }
     }
 
-    // Function to get only the characters that are still locked (isUnlocked == false)
-    List<CharacterClass> GetLockedCharacters(List<CharacterClass> characterList)
+    // Function to get a random stopping angle for the wheel based on rarity
+    float GetRandomStopAngleForRarity(Spinner spinner)
     {
-        List<CharacterClass> lockedCharacters = new List<CharacterClass>();
+        return Random.Range(spinner.minRange, spinner.maxRange);
+    }
 
-        foreach (CharacterClass character in characterList)
+    // Coroutine to spin the wheel and stop at the calculated angle
+    IEnumerator SpinWheel(float targetAngle)
+    {
+        float startAngle = spinWheel.transform.rotation.eulerAngles.z;
+        float totalRotation = 360f * 3; // Three full rotations
+
+        // Ensure that we always rotate clockwise
+        float finalAngle = GetClockwiseAngle(startAngle, targetAngle + totalRotation);
+
+        float elapsed = 0f;
+
+        // Spin the wheel with the total rotation
+        while (elapsed < spinDuration)
         {
-            if (!character.isUnlocked)
-            {
-                lockedCharacters.Add(character);
-            }
+            float angle = Mathf.Lerp(startAngle, finalAngle, elapsed / spinDuration);
+            spinWheel.transform.rotation = Quaternion.Euler(0, 0, angle);
+            elapsed += Time.deltaTime;
+            yield return null;
         }
 
-        return lockedCharacters;
+        // Finalize the spinning animation and start deceleration
+        elapsed = 0f;
+        while (elapsed < decelerationDuration)
+        {
+            float decelerationAngle = Mathf.Lerp(finalAngle, targetAngle, elapsed / decelerationDuration);
+            spinWheel.transform.rotation = Quaternion.Euler(0, 0, decelerationAngle);
+            elapsed += Time.deltaTime;
+            yield return null;
+        }
+
+        // Ensure the final angle is set precisely
+        spinWheel.transform.rotation = Quaternion.Euler(0, 0, targetAngle);
+        Debug.Log("Wheel stopped at angle: " + targetAngle);
+
+        Invoke("ActivatingResultPanel", 0.5f);
+        Invoke("DeactivatingResultPanel", 6f);
+    }
+
+    // Function to calculate the clockwise angle
+    float GetClockwiseAngle(float startAngle, float targetAngle)
+    {
+        float difference = targetAngle - startAngle;
+
+        if (difference < 0)
+        {
+            difference += 360f; // Always rotate clockwise
+        }
+
+        return startAngle + difference;
+    }
+
+    public void ActivatingResultPanel()
+    {
+        resultPanel.SetActive(true);
+    }
+
+    public void DeactivatingResultPanel()
+    {
+        if (resultPanel.active)
+        {
+            resultPanel.SetActive(false);
+        }
     }
 }
